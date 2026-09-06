@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app import crud
-from app.deps import get_db
+from app.deps import get_current_user, get_db
+from app.models.user import User
 from app.schemas.comment import CommentCreate, CommentOut
 
 router = APIRouter(
@@ -11,6 +12,7 @@ router = APIRouter(
 )
 
 _404_post = {"description": "Bài viết không tồn tại"}
+_401 = {"description": "Chưa đăng nhập hoặc Token không hợp lệ"}
 _422 = {"description": "Dữ liệu đầu vào không hợp lệ"}
 
 
@@ -21,10 +23,11 @@ _422 = {"description": "Dữ liệu đầu vào không hợp lệ"}
     summary="Tạo comment",
     description=(
         "Thêm một bình luận vào bài viết. "
-        "Truyền `user_id` qua query param để xác định người bình luận."
+        "Yêu cầu người dùng đã đăng nhập (JWT Bearer Token)."
     ),
     response_description="Comment vừa được tạo",
     responses={
+        401: _401,
         404: _404_post,
         422: _422,
     },
@@ -32,7 +35,7 @@ _422 = {"description": "Dữ liệu đầu vào không hợp lệ"}
 def create_comment(
     post_id: int,
     payload: CommentCreate,
-    user_id: int = Query(..., description="ID của người bình luận"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     # Kiểm tra post tồn tại trước (tránh IntegrityError mơ hồ)
@@ -41,7 +44,7 @@ def create_comment(
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
-    return crud.create_comment(db, payload, post_id=post_id, user_id=user_id)
+    return crud.create_comment(db, payload, post_id=post_id, user_id=current_user.id)
 
 
 @router.get(

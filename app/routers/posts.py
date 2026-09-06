@@ -5,7 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud
-from app.deps import get_db
+from app.deps import get_current_user, get_db
+from app.models.user import User
 from app.schemas.post import PostCreate, PostOut, PostUpdate
 
 router = APIRouter(
@@ -15,6 +16,7 @@ router = APIRouter(
 
 _404_post = {"description": "Bài viết không tồn tại"}
 _404_user = {"description": "User (tác giả) không tồn tại"}
+_401 = {"description": "Chưa đăng nhập hoặc Token không hợp lệ"}
 _422 = {"description": "Dữ liệu đầu vào không hợp lệ"}
 
 
@@ -75,22 +77,22 @@ class TagsOut(BaseModel):
     status_code=status.HTTP_201_CREATED,
     summary="Tạo bài viết mới",
     description=(
-        "Tạo một bài viết mới cho user có `user_id` trong query param. "
-        "User phải tồn tại trước khi tạo bài viết."
+        "Tạo một bài viết mới cho user đang đăng nhập (thông qua Bearer JWT Token)."
     ),
     response_description="Bài viết vừa được tạo",
     responses={
+        401: _401,
         404: _404_user,
         422: _422,
     },
 )
 def create_post(
-    user_id: int = Query(..., description="ID của tác giả"),
-    payload: PostCreate = ...,
+    payload: PostCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
-        post = crud.create_post(db, payload, user_id=user_id)
+        post = crud.create_post(db, payload, user_id=current_user.id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
@@ -119,8 +121,9 @@ def list_posts(
     db: Session = Depends(get_db),
 ):
     posts = crud.get_posts(db, skip=skip, limit=limit, tag_name=tag, author_id=author_id)
+    total = crud.count_posts(db, tag_name=tag, author_id=author_id)
     items = [_to_post_out(p) for p in posts]
-    return PostListOut(items=items, total=len(items), skip=skip, limit=limit)
+    return PostListOut(items=items, total=total, skip=skip, limit=limit)
 
 
 @router.get(
