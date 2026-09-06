@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.post import Post
@@ -82,6 +82,26 @@ def get_posts(
 
     stmt = stmt.order_by(Post.created_at.desc()).offset(skip).limit(limit)
     return list(db.execute(stmt).scalars().unique().all())
+
+
+def count_posts(
+    db: Session,
+    *,
+    tag_name: Optional[str] = None,
+    author_id: Optional[int] = None,
+) -> int:
+    """Đếm tổng số bài viết thoả mãn điều kiện filter."""
+    from app.models.tag import Tag
+
+    stmt = select(func.count(Post.id.distinct()))
+
+    if author_id is not None:
+        stmt = stmt.where(Post.user_id == author_id)
+
+    if tag_name is not None:
+        stmt = stmt.join(Post.tags).where(Tag.name == tag_name)
+
+    return db.scalar(stmt) or 0
 
 
 def update_post(db: Session, post_id: int, payload: PostUpdate) -> Post:
