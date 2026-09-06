@@ -1,12 +1,15 @@
+from typing import Optional
+
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.schemas.user import UserCreate
 
 
 def create_user(db: Session, payload: UserCreate) -> User:
     """
-    Tạo user mới.
+    Tạo user mới với mật khẩu được băm.
 
     Raises:
         ValueError: Nếu email đã tồn tại trong DB (→ router trả 409).
@@ -15,10 +18,28 @@ def create_user(db: Session, payload: UserCreate) -> User:
     if existing:
         raise ValueError(f"Email '{payload.email}' already registered.")
 
-    user = User(email=payload.email, name=payload.name)
+    hashed_pwd = hash_password(payload.password)
+    user = User(
+        email=payload.email,
+        hashed_password=hashed_pwd,
+        name=payload.name,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
+    return user
+
+
+def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
+    """
+    Xác thực user bằng email và password.
+    Trả về User nếu thành công, None nếu thất bại.
+    """
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
     return user
 
 
