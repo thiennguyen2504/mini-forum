@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic>=2
+sqlalchemy>=2
+alembic
+psycopg2-binary
+aiokafka>=0.11.0
+python-dotenv
