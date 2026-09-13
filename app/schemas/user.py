@@ -22,6 +22,23 @@ class UserCreate(BaseModel):
     )
 
 
+class UserUpdate(BaseModel):
+    """Payload để cập nhật thông tin user (PATCH)."""
+
+    email: Optional[EmailStr] = Field(None, description="Địa chỉ email mới (nếu muốn đổi)")
+    password: Optional[str] = Field(None, min_length=6, description="Mật khẩu mới (tối thiểu 6 ký tự)")
+    name: Optional[str] = Field(None, max_length=255, description="Tên hiển thị mới")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Alice Updated",
+                "email": "alice_new@example.com",
+            }
+        }
+    )
+
+
 class UserOut(BaseModel):
     """Response trả về cho User (không bao gồm password)."""
 

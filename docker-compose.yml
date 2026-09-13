@@ -20,7 +20,20 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- Service 2: FastAPI Web App (Tuỳ chọn chạy full stack trong Docker) ---
+  # --- Service 2: Redis Cache ---
+  redis:
+    image: redis:7-alpine
+    container_name: mini_blog_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- Service 3: FastAPI Web App (Tuỳ chọn chạy full stack trong Docker) ---
   web:
     build: .
     container_name: mini_blog_app
@@ -30,10 +43,13 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-mini_blog}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       SECRET_KEY: ${SECRET_KEY:-docker-secret-key-change-in-production}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:

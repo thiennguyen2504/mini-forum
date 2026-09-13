@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password
 from app.models.user import User
-from app.schemas.user import UserCreate
+from app.schemas.user import UserCreate, UserUpdate
 
 
 def create_user(db: Session, payload: UserCreate) -> User:
@@ -67,3 +67,47 @@ def get_user_by_email(db: Session, email: str) -> User:
     if user is None:
         raise LookupError(f"User with email='{email}' not found.")
     return user
+
+
+def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
+    """
+    Cập nhật thông tin user (PATCH).
+
+    Raises:
+        LookupError: Nếu không tìm thấy user_id (→ 404).
+        ValueError: Nếu email mới đã tồn tại (→ 409).
+    """
+    user = db.get(User, user_id)
+    if user is None:
+        raise LookupError(f"User id={user_id} not found.")
+
+    if payload.email is not None and payload.email != user.email:
+        existing = db.query(User).filter(User.email == payload.email).first()
+        if existing:
+            raise ValueError(f"Email '{payload.email}' already registered.")
+        user.email = payload.email
+
+    if payload.password is not None:
+        user.hashed_password = hash_password(payload.password)
+
+    if payload.name is not None:
+        user.name = payload.name
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def delete_user(db: Session, user_id: int) -> None:
+    """
+    Xoá user (cascade xoá posts và comments qua DB constraint).
+
+    Raises:
+        LookupError: Nếu không tìm thấy user_id (→ 404).
+    """
+    user = db.get(User, user_id)
+    if user is None:
+        raise LookupError(f"User id={user_id} not found.")
+
+    db.delete(user)
+    db.commit()

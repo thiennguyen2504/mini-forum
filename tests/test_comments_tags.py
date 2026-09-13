@@ -44,13 +44,47 @@ def test_comments_non_existent_post(client, auth_headers):
     res = client.post(
         "/posts/99999/comments",
         headers=auth_headers,
-        json={"content": "Binh luan mồ côi"},
+        json={"content": "Binh luan cho post khong ton tai"},
     )
     assert res.status_code == status.HTTP_404_NOT_FOUND
 
     # Lấy danh sách comment từ post 99999 -> 404
     res_list = client.get("/posts/99999/comments")
     assert res_list.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_update_and_delete_comment(client, auth_headers):
+    # Tạo post
+    post_res = client.post(
+        "/posts",
+        headers=auth_headers,
+        json={"title": "Post cho comment edit", "content": "Content"},
+    )
+    post_id = post_res.json()["id"]
+
+    # Tạo comment
+    c_res = client.post(
+        f"/posts/{post_id}/comments",
+        headers=auth_headers,
+        json={"content": "Nội dung ban đầu"},
+    )
+    comment_id = c_res.json()["id"]
+
+    # Update comment (PATCH)
+    upd_res = client.patch(
+        f"/posts/comments/{comment_id}",
+        json={"content": "Nội dung sau khi cập nhật"},
+    )
+    assert upd_res.status_code == status.HTTP_200_OK
+    assert upd_res.json()["content"] == "Nội dung sau khi cập nhật"
+
+    # Delete comment
+    del_res = client.delete(f"/posts/comments/{comment_id}")
+    assert del_res.status_code == status.HTTP_204_NO_CONTENT
+
+    # Delete lại -> 404
+    del_res_again = client.delete(f"/posts/comments/{comment_id}")
+    assert del_res_again.status_code == status.HTTP_404_NOT_FOUND
 
 
 def test_attach_new_and_existing_tags_transaction(client, auth_headers):
