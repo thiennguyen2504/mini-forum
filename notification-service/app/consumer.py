@@ -9,6 +9,13 @@ from app.models import Notification
 
 logger = logging.getLogger(__name__)
 
+_consumer_active: bool = False
+
+
+def is_consumer_running() -> bool:
+    """Trả về trạng thái hoạt động của Kafka consumer."""
+    return _consumer_active
+
 
 async def start_consumer():
     """
@@ -16,6 +23,7 @@ async def start_consumer():
     Lắng nghe event từ topic comment.created và tạo notification tương ứng.
     Tự động retry kết nối nếu Kafka chưa sẵn sàng.
     """
+    global _consumer_active
     logger.info("Khởi động Kafka Consumer cho topic '%s'...", KAFKA_TOPIC)
 
     while True:
@@ -30,6 +38,7 @@ async def start_consumer():
                 auto_commit_interval_ms=1000,
             )
             await consumer.start()
+            _consumer_active = True
             logger.info("Kafka Consumer đã kết nối thành công tới %s!", KAFKA_BOOTSTRAP_SERVERS)
 
             async for msg in consumer:
@@ -67,10 +76,12 @@ async def start_consumer():
 
         except asyncio.CancelledError:
             logger.info("Kafka Consumer nhận tín hiệu dừng.")
+            _consumer_active = False
             if consumer:
                 await consumer.stop()
             break
         except Exception as exc:
+            _consumer_active = False
             logger.warning("Kafka Consumer mất kết nối hoặc lỗi: %s. Thử lại sau 3s...", exc)
             if consumer:
                 try:

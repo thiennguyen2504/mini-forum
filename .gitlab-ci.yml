@@ -1,0 +1,59 @@
+stages:
+  - lint
+  - test
+  - build
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .cache/pip
+
+# ── Stage 1: Lint ─────────────────────────────────────────────────────────────
+lint:
+  stage: lint
+  image: python:3.13-slim
+  before_script:
+    - pip install ruff
+  script:
+    - ruff check app/ notification-service/app/
+
+# ── Stage 2: Test ─────────────────────────────────────────────────────────────
+test:
+  stage: test
+  image: python:3.13-slim
+  services:
+    - name: postgres:15-alpine
+      alias: postgres
+  variables:
+    POSTGRES_DB: mini_blog_test
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_HOST_AUTH_METHOD: trust
+    DATABASE_URL: "postgresql+psycopg2://postgres:postgres@postgres:5432/mini_blog_test"
+    KAFKA_BOOTSTRAP_SERVERS: "localhost:9092"
+    REDIS_URL: "redis://localhost:6379/0"
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+    - pip install -r requirements.txt
+    - pip install -r notification-service/requirements.txt
+  script:
+    - pytest tests/
+    - pytest notification-service/tests/
+
+# ── Stage 3: Build ────────────────────────────────────────────────────────────
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  needs:
+    - lint
+    - test
+  script:
+    - docker build -t forum-service:${CI_COMMIT_SHORT_SHA} -t forum-service:latest .
+    - docker build -t notification-service:${CI_COMMIT_SHORT_SHA} -t notification-service:latest ./notification-service

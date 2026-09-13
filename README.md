@@ -1,5 +1,7 @@
 # Mini Blog API & Microservices Architecture
 
+[![pipeline status](https://gitlab.com/thiennguyen2504/mini-forum/badges/main/pipeline.svg)](https://gitlab.com/thiennguyen2504/mini-forum/-/commits/main)
+
 Dự án FastAPI backend hoàn chỉnh cho hệ thống Mini Blog RESTful API & Notification Microservice:
 - **forum-service**: FastAPI + SQLAlchemy 2.0 + Alembic + JWT Auth + Redis Cache + Kafka Event Publisher.
 - **notification-service**: FastAPI + SQLAlchemy + Alembic + Kafka Consumer (lắng nghe event `comment.created` và lưu thông báo).

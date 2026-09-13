@@ -1,12 +1,12 @@
+import os
+import sys
+
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-import sys
-import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -45,10 +45,22 @@ def client():
     return TestClient(app)
 
 
-def test_health_check(client):
+def test_health_check_degraded_when_kafka_down(client):
+    # Khi Kafka chưa chạy trong unit test, probe trả 503 với kafka: error
+    res = client.get("/health")
+    assert res.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    data = res.json()
+    assert data["status"] == "error"
+    assert data["db"] == "ok"
+    assert data["kafka"] == "error"
+
+
+def test_health_check_ok(client, monkeypatch):
+    # Giả lập khi Kafka consumer đang hoạt động bình thường
+    monkeypatch.setattr("app.main.is_consumer_running", lambda: True)
     res = client.get("/health")
     assert res.status_code == status.HTTP_200_OK
-    assert res.json() == {"status": "ok", "service": "notification-service"}
+    assert res.json() == {"status": "ok", "db": "ok", "kafka": "ok"}
 
 
 def test_get_notifications_empty(client):
