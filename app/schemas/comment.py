@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,6 +13,20 @@ class CommentCreate(BaseModel):
         json_schema_extra={
             "example": {
                 "content": "Bài viết rất hay, cảm ơn tác giả!",
+            }
+        }
+    )
+
+
+class CommentUpdate(BaseModel):
+    """Payload để cập nhật bình luận (PATCH)."""
+
+    content: Optional[str] = Field(None, min_length=1, description="Nội dung bình luận mới")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "content": "Bình luận đã được cập nhật.",
             }
         }
     )

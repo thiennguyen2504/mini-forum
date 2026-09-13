@@ -1,31 +1,41 @@
+import asyncio
+from contextlib import asynccontextmanager
 import logging
 import time
 import uuid
 
-from fastapi import Depends, FastAPI, Request, Response, status
-from sqlalchemy import text
+from fastapi import Depends, FastAPI, Request, Response, Query, status
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.core.logging import setup_logging
-from app.deps import get_db
-from app.routers.auth import router as auth_router
-from app.routers.comments import router as comments_router
-from app.routers.posts import router as posts_router
-from app.routers.users import router as users_router
+from app.consumer import is_consumer_running, start_consumer
+from app.db import get_db
+from app.logging import setup_logging
+from app.models import Notification
+from app.schemas import NotificationOut
 
-setup_logging("forum-service")
+setup_logging("notification-service")
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Khởi động Kafka consumer chạy nền
+    consumer_task = asyncio.create_task(start_consumer())
+    try:
+        yield
+    finally:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+
+
 app = FastAPI(
-    title="Mini Blog API",
-    description=(
-        "RESTful API cho ứng dụng blog đơn giản.\n\n"
-        "## Tính năng\n"
-        "- **Auth** — Đăng ký (`/auth/register`) và Đăng nhập (`/auth/token`) lấy JWT token\n"
-        "- **Users** — Đăng ký và tra cứu tài khoản\n"
-        "- **Posts** — Tạo (yêu cầu Token), đọc, cập nhật, xoá bài viết; gắn tag\n"
-        "- **Comments** — Bình luận dưới bài viết (yêu cầu Token)\n\n"
-    ),
+    title="Notification Service",
+    description="Microservice quản lý thông báo người dùng qua Kafka event stream.",
+    lifespan=lifespan,
 )
 
 
@@ -77,19 +87,9 @@ async def tracing_logging_middleware(request: Request, call_next):
         raise
 
 
-# ── Routers ──────────────────────────────────────────────────────────────────
-app.include_router(auth_router)
-app.include_router(users_router)
-app.include_router(posts_router)
-app.include_router(comments_router)
-
-
 # ── Health check ─────────────────────────────────────────────────────────────
-@app.get(
-    "/health",
-    tags=["Health"],
-    summary="Kiểm tra trạng thái server, DB và Redis",
-)
+@app.get("/health", tags=["Health"], summary="Health check cho notification-service")
+@app.get("/notifications/health", tags=["Health"], summary="Health check qua proxy /notifications/health")
 def health_check(response: Response, db: Session = Depends(get_db)):
     db_status = "ok"
     try:
@@ -98,22 +98,37 @@ def health_check(response: Response, db: Session = Depends(get_db)):
         logger.warning("DB health check error: %s", exc)
         db_status = "error"
 
-    redis_status = "ok"
-    try:
-        from app.core.cache import redis_client
+    kafka_status = "ok" if is_consumer_running() else "error"
 
-        if not redis_client.ping():
-            redis_status = "error"
-    except Exception as exc:
-        logger.warning("Redis health check error: %s", exc)
-        redis_status = "error"
-
-    all_ok = db_status == "ok" and redis_status == "ok"
+    all_ok = db_status == "ok" and kafka_status == "ok"
     if not all_ok:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
     return {
         "status": "ok" if all_ok else "error",
         "db": db_status,
-        "redis": redis_status,
+        "kafka": kafka_status,
     }
+
+
+# ── Notification Endpoints ───────────────────────────────────────────────────
+@app.get(
+    "/notifications/{user_id}",
+    response_model=list[NotificationOut],
+    tags=["Notifications"],
+    summary="Lấy danh sách thông báo của user",
+)
+def get_user_notifications(
+    user_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(Notification)
+        .where(Notification.user_id == user_id)
+        .order_by(Notification.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(db.execute(stmt).scalars().all())

@@ -61,3 +61,25 @@ def test_get_user_success(client, test_user):
 def test_get_user_not_found(client):
     response = client.get("/users/99999")
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_update_user_success(client, test_user):
+    payload = {
+        "name": "Updated User Name",
+        "email": "updated_email@example.com",
+    }
+    response = client.patch(f"/users/{test_user.id}", json=payload)
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["name"] == "Updated User Name"
+    assert data["email"] == "updated_email@example.com"
+
+
+def test_delete_user_success(client, test_user):
+    # Xoá user
+    del_res = client.delete(f"/users/{test_user.id}")
+    assert del_res.status_code == status.HTTP_204_NO_CONTENT
+
+    # Lấy lại -> 404
+    get_res = client.get(f"/users/{test_user.id}")
+    assert get_res.status_code == status.HTTP_404_NOT_FOUND

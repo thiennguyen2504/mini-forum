@@ -1,6 +1,48 @@
-# Mini Blog API
+# Mini Blog API & Microservices Architecture
 
-Dự án FastAPI backend hoàn chỉnh cho ứng dụng Mini Blog RESTful API với SQLAlchemy 2.0, Alembic migration, JWT Authentication, Pytest suite, Postman collection và Docker Compose (PostgreSQL).
+[![pipeline status](https://gitlab.com/thiennguyen2504/mini-forum/badges/main/pipeline.svg)](https://gitlab.com/thiennguyen2504/mini-forum/-/commits/main)
+
+Dự án FastAPI backend hoàn chỉnh cho hệ thống Mini Blog RESTful API & Notification Microservice:
+- **forum-service**: FastAPI + SQLAlchemy 2.0 + Alembic + JWT Auth + Redis Cache + Kafka Event Publisher.
+- **notification-service**: FastAPI + SQLAlchemy + Alembic + Kafka Consumer (lắng nghe event `comment.created` và lưu thông báo).
+- **nginx**: Reverse Proxy (Port 80) định tuyến `/api/*` và `/notifications/*`, kèm Gzip nén dữ liệu và Rate Limiting.
+- **db** (PostgreSQL 15), **redis** (Redis 7), **kafka** (Apache Kafka 3.7 KRaft mode).
+
+---
+
+## 🏗️ Sơ đồ kiến trúc hệ thống
+
+```
+                    Client (Browser / Postman / cURL)
+                                   │
+                                   ▼
+                    ┌─────────────────────────────┐
+                    │     Nginx Reverse Proxy     │
+                    │         (Port 80)           │
+                    │   Rate Limit 10r/s + Gzip   │
+                    └──────────────┬──────────────┘
+                                   │
+            ┌──────────────────────┴──────────────────────┐
+            │ /api/* (strip prefix)                       │ /notifications/*
+            ▼                                             ▼
+  ┌───────────────────┐                         ┌───────────────────────────┐
+  │   forum-service   │                         │   notification-service    │
+  │     (Port 8000)   │                         │        (Port 8000)        │
+  └────┬─────────┬────┘                         └─────────────┬─────────────┘
+       │         │                                            │
+       │         │ 1. Produce "comment.created"               │ 2. Consume event
+       │         ▼                                            ▼
+       │   ┌───────────┐       Event Stream             ┌───────────┐
+       │   │   Redis   │   ─────────────────────────►   │   Kafka   │
+       │   │  (Cache)  │                                │  (KRaft)  │
+       │   └───────────┘                                └───────────┘
+       │
+       ▼
+ ┌───────────────┐
+ │  PostgreSQL   │ ◄─── (Cùng lưu trữ: forum data & notifications table)
+ │   Database    │
+ └───────────────┘
+```
 
 ---
 
@@ -8,138 +50,73 @@ Dự án FastAPI backend hoàn chỉnh cho ứng dụng Mini Blog RESTful API v�
 
 ```text
 mini-blog-api/
-├── app/
-│   ├── core/           # Module bảo mật (mã hoá bcrypt, tạo/mã hoá JWT token)
-│   ├── crud/           # Tầng tương tác dữ liệu Database (User, Post, Comment, Tag)
-│   ├── models/         # Các ORM models Declarative SQLAlchemy 2.0
-│   ├── routers/        # Định tuyến API (Auth, Users, Posts, Comments)
-│   ├── schemas/        # Validation schemas Pydantic v2
-│   ├── db.py           # Khởi tạo DB Engine & SessionLocal
-│   ├── deps.py         # Dependencies cho FastAPI (get_db, get_current_user)
-│   └── main.py         # Entry point ứng dụng FastAPI
-├── alembic/            # Thư mục quản lý Database Migrations
-├── postman/            # Postman Collection & Environment JSON
-├── tests/              # Bộ test cases tự động (pytest)
-├── .env.example        # File mẫu cấu hình biến môi trường
-├── alembic.ini         # Cấu hình Alembic
-├── docker-compose.yml  # File cấu hình Docker Compose (PostgreSQL & FastAPI)
-├── Dockerfile          # Containerize ứng dụng FastAPI
-├── requirements.txt    # Các thư viện phụ thuộc
-└── README.md           # Hướng dẫn sử dụng
+├── app/                        # Mã nguồn forum-service
+│   ├── core/                   # Security, Redis Cache, Kafka Events Publisher
+│   ├── crud/                   # Tương tác Database trực tiếp
+│   ├── services/               # Service layer (PostService, CommentService)
+│   ├── models/                 # SQLAlchemy ORM Models
+│   ├── routers/                # API Routers (Auth, Users, Posts, Comments)
+│   ├── schemas/                # Pydantic v2 schemas
+│   ├── deps.py                 # Dependencies injection
+│   └── main.py                 # Entrypoint forum-service
+├── notification-service/       # Microservice thông báo độc lập
+│   ├── app/
+│   │   ├── config.py           # Cấu hình DB & Kafka
+│   │   ├── consumer.py         # Kafka consumer worker chạy nền
+│   │   ├── db.py & models.py   # SQLAlchemy model Notification
+│   │   ├── schemas.py          # NotificationOut schema
+│   │   └── main.py             # FastAPI app (GET /health, GET /notifications/{user_id})
+│   ├── alembic/                # Migration riêng cho bảng notifications
+│   ├── Dockerfile
+│   └── requirements.txt
+├── nginx/
+│   └── nginx.conf              # Cấu hình Nginx Reverse Proxy (port 80)
+├── alembic/                    # Migration cho forum-service
+├── tests/                      # Bộ test tự động pytest
+├── docker-compose.yml          # Điều phối 6 services (db, redis, kafka, 2 apps, nginx)
+├── requirements.txt            # Thư viện cho forum-service
+└── README.md
 ```
 
 ---
 
-## 🐳 Cấu hình Database & Docker Compose
+## 🐳 Khởi chạy toàn bộ hệ thống bằng Docker Compose
 
-Dự án linh hoạt hỗ trợ nhiều tuỳ chọn kết nối cơ sở dữ liệu:
-
-### **Cách 1: Chỉ chạy PostgreSQL bằng Docker Compose (Khuyên dùng khi dev trên máy)**
-
-1. Khởi chạy duy nhất container PostgreSQL ở chế độ ngầm (`detached`):
-   ```bash
-   docker compose up -d db
-   ```
-2. Cấu hình file `.env` trên máy host:
-   ```ini
-   DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/mini_blog
-   SECRET_KEY=your-super-secret-key-change-in-production
-   ```
-3. Chạy migration và khởi động server trên máy local:
-   ```bash
-   alembic upgrade head
-   uvicorn app.main:app --reload
-   ```
-
----
-
-### **Cách 2: Chạy toàn bộ ứng dụng (FastAPI + PostgreSQL) bằng Docker Compose**
-
-Chạy duy nhất 1 lệnh để build và khởi chạy cả ứng dụng FastAPI và DB PostgreSQL trong Docker:
-```bash
-docker compose up --build
-```
-> Server sẽ tự động chờ DB sẵn sàng, tự chạy `alembic upgrade head` và khởi động server tại [http://localhost:8000](http://localhost:8000).
-
-- Tắt các containers:
-  ```bash
-  docker compose down
-  ```
-- Tắt và xoá sạch dữ liệu DB container:
-  ```bash
-  docker compose down -v
-  ```
-
----
-
-### **Cách 3: Kết nối với SQLite cục bộ (Không cần cài/chạy PostgreSQL)**
-
-Trong file `.env`, chuyển sang dùng SQLite:
-```ini
-DATABASE_URL=sqlite:///./mini_blog.db
-```
-Chạy migration và ứng dụng trực tiếp:
-```bash
-alembic upgrade head
-uvicorn app.main:app --reload
-```
-
----
-
-## 🚀 Hướng dẫn cài đặt thủ công (Không dùng Docker)
-
-### 1. Tạo và kích hoạt môi trường ảo (Virtual Environment)
-
-**Trên Windows (PowerShell):**
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
-
-**Trên Linux / macOS:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
----
-
-### 2. Cài đặt các thư viện phụ thuộc
+Chạy một lệnh duy nhất để build và khởi động cả 6 services:
 
 ```bash
-pip install -r requirements.txt
+docker compose up --build -d
+```
+
+Kiểm tra trạng thái các container:
+```bash
+docker compose ps
+```
+
+Các container sẽ hoạt động đồng bộ:
+- `mini_blog_nginx`: Port `80` (Cổng truy cập chính của toàn bộ hệ thống).
+- `mini_blog_forum`: `forum-service` (gọi qua `http://localhost/api/*`).
+- `mini_blog_notification`: `notification-service` (gọi qua `http://localhost/notifications/*`).
+- `mini_blog_kafka`: Kafka KRaft broker (Port `9092`).
+- `mini_blog_redis`: Redis Cache (Port `6379`).
+- `mini_blog_db`: PostgreSQL Database (Port `5432`).
+
+Dừng hệ thống:
+```bash
+docker compose down
+```
+
+Dừng và xoá sạch dữ liệu:
+```bash
+docker compose down -v
 ```
 
 ---
 
-### 3. Khởi chạy ứng dụng
+## 🧪 Chạy Kiểm thử Tự động (Pytest)
 
-Sau khi khởi chạy server thành công (truy cập cổng `8000`):
-- **Health Check**: [http://localhost:8000/health](http://localhost:8000/health)
-- **Interactive Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
----
-
-## 🧪 Chạy Kiểm thử (Unit & Integration Tests)
-
-Dự án tích hợp bộ kiểm thử tự động với SQLite in-memory DB:
+Toàn bộ 18 test cases của `forum-service` kiểm tra CRUD, Service Layer, Redis Fallback, Tags, Comments và Users:
 
 ```bash
 pytest -v
 ```
-
----
-
-## 📬 Hướng dẫn Import Postman Collection & Environment
-
-Trong thư mục `postman/` đã có sẵn các file cấu hình cho Postman:
-
-1. **Import Collection**:
-   - Mở Postman -> Bấm **Import** -> Chọn file `postman/mini-blog-api.postman_collection.json`.
-2. **Import Environment**:
-   - Chọn **Environments** -> Bấm **Import** -> Chọn file `postman/mini-blog-api.postman_environment.json`.
-3. **Sử dụng**:
-   - Chọn Environment **Mini Blog API Environment** góc trên bên phải.
-   - Chạy request `/auth/register` để đăng ký.
-   - Chạy request `/auth/token` để đăng nhập (Tự động lưu `access_token`).

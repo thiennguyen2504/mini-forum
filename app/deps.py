@@ -52,3 +52,15 @@ def get_current_user(
         raise credentials_exception
 
     return user
+
+
+def get_post_service(db: Session = Depends(get_db)):
+    from app.services.post_service import PostService
+
+    return PostService(db)
+
+
+def get_comment_service(db: Session = Depends(get_db)):
+    from app.services.comment_service import CommentService
+
+    return CommentService(db)

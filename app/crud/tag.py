@@ -28,7 +28,6 @@ def attach_tags_to_post(db: Session, post_id: int, tag_names: list[str]) -> Post
     - Gắn tất cả tag vào post.tags.
     - Commit toàn bộ một lần — tag và liên kết cùng được ghi hoặc cùng rollback.
     - Nếu xảy ra lỗi bất kỳ: rollback() và raise lại exception gốc
-      để đảm bảo không có tag mồ côi.
 
     Raises:
         LookupError: Nếu post_id không tồn tại.

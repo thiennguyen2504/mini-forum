@@ -2,12 +2,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from app import crud
-from app.deps import get_current_user, get_db
+from app.deps import get_current_user, get_post_service
 from app.models.user import User
 from app.schemas.post import PostCreate, PostOut, PostUpdate
+from app.services.post_service import PostListOut, PostService, TagsOut
 
 router = APIRouter(
     prefix="/posts",
@@ -21,35 +20,7 @@ _422 = {"description": "Dữ liệu đầu vào không hợp lệ"}
 
 
 # ---------------------------------------------------------------------------
-# Helper: ORM Post → PostOut (map author_name + tags thủ công)
-# ---------------------------------------------------------------------------
-
-def _to_post_out(post) -> PostOut:
-    return PostOut(
-        id=post.id,
-        user_id=post.user_id,
-        title=post.title,
-        content=post.content,
-        view_count=post.view_count,
-        created_at=post.created_at,
-        author_name=post.author.name if post.author else None,
-        tags=[tag.name for tag in post.tags],
-    )
-
-
-# ---------------------------------------------------------------------------
-# Response schema cho GET /posts (paginated list)
-# ---------------------------------------------------------------------------
-
-class PostListOut(BaseModel):
-    items: list[PostOut]
-    total: int
-    skip: int
-    limit: int
-
-
-# ---------------------------------------------------------------------------
-# Response schema cho POST /posts/{id}/tags
+# Input schema cho POST /posts/{id}/tags
 # ---------------------------------------------------------------------------
 
 class TagNamesIn(BaseModel):
@@ -60,11 +31,6 @@ class TagNamesIn(BaseModel):
             "example": {"tag_names": ["python", "fastapi", "tutorial"]}
         }
     }
-
-
-class TagsOut(BaseModel):
-    post_id: int
-    tags: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -89,16 +55,12 @@ class TagsOut(BaseModel):
 def create_post(
     payload: PostCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    service: PostService = Depends(get_post_service),
 ):
     try:
-        post = crud.create_post(db, payload, user_id=current_user.id)
+        return service.create_post(payload, user_id=current_user.id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-
-    # Reload với selectinload để lấy author + tags
-    post = crud.get_post(db, post.id)
-    return _to_post_out(post)
 
 
 @router.get(
@@ -118,12 +80,9 @@ def list_posts(
     limit: int = Query(20, ge=1, le=100, description="Số bản ghi tối đa trả về"),
     tag: Optional[str] = Query(None, description="Lọc theo tên tag"),
     author_id: Optional[int] = Query(None, description="Lọc theo ID tác giả"),
-    db: Session = Depends(get_db),
+    service: PostService = Depends(get_post_service),
 ):
-    posts = crud.get_posts(db, skip=skip, limit=limit, tag_name=tag, author_id=author_id)
-    total = crud.count_posts(db, tag_name=tag, author_id=author_id)
-    items = [_to_post_out(p) for p in posts]
-    return PostListOut(items=items, total=total, skip=skip, limit=limit)
+    return service.list_posts(skip=skip, limit=limit, tag=tag, author_id=author_id)
 
 
 @router.get(
@@ -135,12 +94,14 @@ def list_posts(
     response_description="Bài viết với author_name và tags",
     responses={404: _404_post},
 )
-def get_post(post_id: int, db: Session = Depends(get_db)):
+def get_post(
+    post_id: int,
+    service: PostService = Depends(get_post_service),
+):
     try:
-        post = crud.get_post(db, post_id)
+        return service.get_post(post_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    return _to_post_out(post)
 
 
 @router.patch(
@@ -158,14 +119,15 @@ def get_post(post_id: int, db: Session = Depends(get_db)):
         422: _422,
     },
 )
-def update_post(post_id: int, payload: PostUpdate, db: Session = Depends(get_db)):
+def update_post(
+    post_id: int,
+    payload: PostUpdate,
+    service: PostService = Depends(get_post_service),
+):
     try:
-        crud.update_post(db, post_id, payload)
+        return service.update_post(post_id, payload)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-
-    post = crud.get_post(db, post_id)
-    return _to_post_out(post)
 
 
 @router.delete(
@@ -176,9 +138,12 @@ def update_post(post_id: int, payload: PostUpdate, db: Session = Depends(get_db)
     response_description="Xoá thành công, không có body",
     responses={404: _404_post},
 )
-def delete_post(post_id: int, db: Session = Depends(get_db)):
+def delete_post(
+    post_id: int,
+    service: PostService = Depends(get_post_service),
+):
     try:
-        crud.delete_post(db, post_id)
+        service.delete_post(post_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
@@ -191,7 +156,7 @@ def delete_post(post_id: int, db: Session = Depends(get_db)):
     description=(
         "Gán danh sách tag cho bài viết. Tag chưa tồn tại sẽ được tạo mới. "
         "Toàn bộ thao tác thực hiện trong một transaction duy nhất — "
-        "nếu có lỗi giữa chừng, không có tag mồ côi nào được tạo ra."
+        "nếu có lỗi giữa chừng, không có tag nào được tạo ra."
     ),
     response_description="Danh sách tag hiện tại của bài viết sau khi cập nhật",
     responses={
@@ -200,9 +165,13 @@ def delete_post(post_id: int, db: Session = Depends(get_db)):
         422: _422,
     },
 )
-def attach_tags(post_id: int, payload: TagNamesIn, db: Session = Depends(get_db)):
+def attach_tags(
+    post_id: int,
+    payload: TagNamesIn,
+    service: PostService = Depends(get_post_service),
+):
     try:
-        post = crud.attach_tags_to_post(db, post_id, payload.tag_names)
+        return service.attach_tags_to_post(post_id, payload.tag_names)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except Exception as exc:
@@ -210,4 +179,3 @@ def attach_tags(post_id: int, payload: TagNamesIn, db: Session = Depends(get_db)
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Tag transaction failed: {exc}",
         )
-    return TagsOut(post_id=post.id, tags=[t.name for t in post.tags])

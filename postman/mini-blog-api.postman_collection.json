@@ -178,6 +178,77 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "Update User (PATCH)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"John Doe Updated\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users",
+								"1"
+							]
+						},
+						"description": "Cập nhật thông tin một phần của user"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Delete User",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/users/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users",
+								"1"
+							]
+						},
+						"description": "Xoá tài khoản user theo ID"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 204 No Content\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
 				}
 			]
 		},
@@ -484,7 +555,11 @@
 								"exec": [
 									"pm.test(\"Status code is 201 Created\", function () {",
 									"    pm.response.to.have.status(201);",
-									"});"
+									"});",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.id) {",
+									"    pm.environment.set(\"comment_id\", jsonData.id);",
+									"}"
 								],
 								"type": "text/javascript"
 							}
@@ -526,6 +601,79 @@
 								"exec": [
 									"pm.test(\"Status code is 200 OK\", function () {",
 									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Update Comment (PATCH)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"content\": \"Nội dung bình luận đã cập nhật qua Postman\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/comments/{{comment_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"posts",
+								"comments",
+								"{{comment_id}}"
+							]
+						},
+						"description": "Cập nhật nội dung một bình luận theo comment_id"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Delete Comment",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/comments/{{comment_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"posts",
+								"comments",
+								"{{comment_id}}"
+							]
+						},
+						"description": "Xoá bình luận theo comment_id"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 204 No Content\", function () {",
+									"    pm.response.to.have.status(204);",
 									"});"
 								],
 								"type": "text/javascript"
