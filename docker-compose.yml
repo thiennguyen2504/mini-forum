@@ -75,6 +75,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SECRET_KEY: ${SECRET_KEY:-docker-secret-key-change-in-production}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      AI_SERVICE_URL: http://ai-service:8000
     depends_on:
       db:
         condition: service_healthy
@@ -97,7 +98,29 @@ services:
       kafka:
         condition: service_healthy
 
-  # --- Service 6: Nginx Reverse Proxy ---
+  # --- Service 6: AI Service (FastAPI + Gemini) ---
+  ai-service:
+    build: ./ai-service
+    container_name: mini_blog_ai
+    restart: always
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_SAFETY_LEVEL: ${GEMINI_SAFETY_LEVEL:-BLOCK_ONLY_HIGH}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-20}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      AI_CACHE_TTL_SECONDS: ${AI_CACHE_TTL_SECONDS:-21600}
+      AI_REQUIRE_AUTH: ${AI_REQUIRE_AUTH:-true}
+      AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-6000}
+      AI_PROMPT_VERSION: ${AI_PROMPT_VERSION:-v2}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-docker-secret-key-change-in-production}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # --- Service 7: Nginx Reverse Proxy ---
   nginx:
     image: nginx:alpine
     container_name: mini_blog_nginx
@@ -109,8 +132,9 @@ services:
     depends_on:
       - forum-service
       - notification-service
+      - ai-service
 
-  # --- Service 7: Kafka UI (For visualization) ---
+  # --- Service 8: Kafka UI (For visualization) ---
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: mini_blog_kafka_ui

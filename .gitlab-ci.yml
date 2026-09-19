@@ -18,7 +18,7 @@ lint:
   before_script:
     - pip install ruff
   script:
-    - ruff check app/ notification-service/app/
+    - ruff check app/ notification-service/app/ ai-service/app/
 
 # ── Stage 2: Test ─────────────────────────────────────────────────────────────
 test:
@@ -39,9 +39,11 @@ test:
     - apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
     - pip install -r requirements-dev.txt
     - pip install -r notification-service/requirements-dev.txt
+    - pip install -r ai-service/requirements-dev.txt
   script:
     - pytest tests/
     - pytest notification-service/tests/
+    - pytest ai-service/tests/
 
 # ── Stage 3: Build ────────────────────────────────────────────────────────────
 build:
@@ -57,3 +59,4 @@ build:
   script:
     - docker build -t forum-service:${CI_COMMIT_SHORT_SHA} -t forum-service:latest .
     - docker build -t notification-service:${CI_COMMIT_SHORT_SHA} -t notification-service:latest ./notification-service
+    - docker build -t ai-service:${CI_COMMIT_SHORT_SHA} -t ai-service:latest ./ai-service
