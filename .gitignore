@@ -32,3 +32,8 @@ htmlcov/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# AI Service Eval Reports
+ai-service/eval/reports/*
+!ai-service/eval/reports/.gitkeep
+
