@@ -684,6 +684,230 @@
 			]
 		},
 		{
+			"name": "AI",
+			"item": [
+				{
+					"name": "Analyze Post (Success)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Hướng dẫn xây dựng RESTful API với FastAPI và Docker\",\n  \"content\": \"FastAPI là một web framework hiện đại, hiệu năng cao để viết API với Python 3.8+...\",\n  \"options\": {\n    \"max_tags\": 5,\n    \"skip_cache\": false\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url_ai}}/ai/analyze",
+							"host": [
+								"{{base_url_ai}}"
+							],
+							"path": [
+								"ai",
+								"analyze"
+							]
+						},
+						"description": "Gọi ai-service phân tích bài viết có cấu trúc chặt chẽ (tóm tắt, tags, topic, sentiment, language, moderation)"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Has data and meta\", function () {",
+									"    var res = pm.response.json();",
+									"    pm.expect(res).to.have.property('data');",
+									"    pm.expect(res).to.have.property('meta');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Analyze Post - Missing Token (401)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Bài viết không có token\",\n  \"content\": \"Test 401 Unauthorized\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url_ai}}/ai/analyze",
+							"host": [
+								"{{base_url_ai}}"
+							],
+							"path": [
+								"ai",
+								"analyze"
+							]
+						},
+						"description": "Yêu cầu phân tích khi thiếu Authorization header (trả về lỗi chuẩn 401 UNAUTHORIZED)"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"pm.test(\"Error code is UNAUTHORIZED\", function () {",
+									"    var res = pm.response.json();",
+									"    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Analyze Post - Invalid Input (422)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"\",\n  \"content\": \"Tiêu đề rỗng\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url_ai}}/ai/analyze",
+							"host": [
+								"{{base_url_ai}}"
+							],
+							"path": [
+								"ai",
+								"analyze"
+							]
+						},
+						"description": "Yêu cầu phân tích sai schema (title rỗng) trả về 422 INVALID_INPUT"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 422 Unprocessable Content\", function () {",
+									"    pm.response.to.have.status(422);",
+									"});",
+									"pm.test(\"Error code is INVALID_INPUT\", function () {",
+									"    var res = pm.response.json();",
+									"    pm.expect(res.error.code).to.eql(\"INVALID_INPUT\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "AI Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url_ai}}/ai/health",
+							"host": [
+								"{{base_url_ai}}"
+							],
+							"path": [
+								"ai",
+								"health"
+							]
+						},
+						"description": "Kiểm tra trạng thái provider, model và Redis của ai-service"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Health status returned\", function () {",
+									"    var res = pm.response.json();",
+									"    pm.expect(res).to.have.property(\"provider\");",
+									"    pm.expect(res).to.have.property(\"redis\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Attach AI Tags to Post",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/ai-tags",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"posts",
+								"{{post_id}}",
+								"ai-tags"
+							]
+						},
+						"description": "Gợi ý và tự động gắn tags bằng AI cho bài viết (yêu cầu tác giả đăng nhập)"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Tags attached\", function () {",
+									"    var res = pm.response.json();",
+									"    pm.expect(res).to.have.property(\"tags\");",
+									"    pm.expect(res).to.have.property(\"analysis\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				}
+			]
+		},
+		{
 			"name": "Health",
 			"item": [
 				{
