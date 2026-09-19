@@ -6,9 +6,7 @@ from typing import Any, Literal, Optional, Union
 from pydantic import BaseModel
 
 from app.errors import (
-    ContentBlockedError,
     LLMInvalidOutputError,
-    LLMTimeoutError,
     LLMUnavailableError,
 )
 from app.llm.base import LLMResult, TokenUsage
@@ -183,7 +181,7 @@ class FakeLLMClient:
                 topic = "tech"
             elif any(n in content_lower for n in ["tin tức", "ra mắt", "công bố", "news", "update"]):
                 topic = "news"
-            elif any(l in content_lower for l in ["cuộc sống", "chia sẻ", "tâm sự", "life", "gia đình"]):
+            elif any(item in content_lower for item in ["cuộc sống", "chia sẻ", "tâm sự", "life", "gia đình"]):
                 topic = "life"
             else:
                 topic = "discussion"

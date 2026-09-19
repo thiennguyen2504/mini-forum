@@ -7,7 +7,6 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 from app.errors import (
-    AIServiceError,
     ContentBlockedError,
     LLMInvalidOutputError,
     LLMTimeoutError,
