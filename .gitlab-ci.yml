@@ -37,8 +37,8 @@ test:
     REDIS_URL: "redis://localhost:6379/0"
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
-    - pip install -r requirements.txt
-    - pip install -r notification-service/requirements.txt
+    - pip install -r requirements-dev.txt
+    - pip install -r notification-service/requirements-dev.txt
   script:
     - pytest tests/
     - pytest notification-service/tests/

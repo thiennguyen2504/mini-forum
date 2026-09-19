@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import logging
 import time
 import uuid
@@ -6,6 +7,7 @@ from fastapi import Depends, FastAPI, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.events import shutdown_producer
 from app.core.logging import setup_logging
 from app.deps import get_db
 from app.routers.auth import router as auth_router
@@ -15,6 +17,16 @@ from app.routers.users import router as users_router
 
 setup_logging("forum-service")
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    try:
+        await shutdown_producer()
+    except Exception as exc:
+        logger.warning("Error during lifespan shutdown: %s", exc)
+
 
 app = FastAPI(
     title="Mini Blog API",
@@ -26,6 +38,7 @@ app = FastAPI(
         "- **Posts** — Tạo (yêu cầu Token), đọc, cập nhật, xoá bài viết; gắn tag\n"
         "- **Comments** — Bình luận dưới bài viết (yêu cầu Token)\n\n"
     ),
+    lifespan=lifespan,
 )
 
 
