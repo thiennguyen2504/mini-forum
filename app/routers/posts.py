@@ -1,9 +1,10 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
-from app.deps import get_current_user, get_post_service
+from app.core.ai_client import AiServiceError, ai_client
+from app.deps import get_current_user, get_post_service, oauth2_scheme
 from app.models.user import User
 from app.schemas.post import PostCreate, PostOut, PostUpdate
 from app.services.post_service import PostListOut, PostService, TagsOut
@@ -20,7 +21,7 @@ _422 = {"description": "Dữ liệu đầu vào không hợp lệ"}
 
 
 # ---------------------------------------------------------------------------
-# Input schema cho POST /posts/{id}/tags
+# Input & Output schemas cho Tags & AI Tags
 # ---------------------------------------------------------------------------
 
 class TagNamesIn(BaseModel):
@@ -29,6 +30,29 @@ class TagNamesIn(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {"tag_names": ["python", "fastapi", "tutorial"]}
+        }
+    }
+
+
+class AiTagsOut(BaseModel):
+    post_id: int
+    tags: list[str]
+    analysis: dict
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "post_id": 1,
+                "tags": ["fastapi", "python"],
+                "analysis": {
+                    "summary": "Tóm tắt bài viết giới thiệu FastAPI...",
+                    "tags": ["fastapi", "python"],
+                    "topic": "tech",
+                    "sentiment": "positive",
+                    "language": "vi",
+                    "moderation": {"is_safe": True, "categories": [], "severity": "none", "reason": ""},
+                },
+            }
         }
     }
 
@@ -179,3 +203,65 @@ def attach_tags(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Tag transaction failed: {exc}",
         )
+
+
+@router.post(
+    "/{post_id}/ai-tags",
+    response_model=AiTagsOut,
+    status_code=status.HTTP_200_OK,
+    summary="Gợi ý và tự động gắn tag bằng AI",
+    description=(
+        "Gọi microservice ai-service phân tích bài viết bằng mô hình Gemini để sinh tags "
+        "và tự động gắn các tags này vào bài viết. Chỉ tác giả bài viết mới có quyền thực hiện."
+    ),
+    response_description="Danh sách tag đã được gắn kèm kết quả phân tích chi tiết",
+    responses={
+        401: _401,
+        403: {"description": "Chỉ tác giả mới có quyền gắn tag tự động cho bài viết này"},
+        404: _404_post,
+        503: {"description": "Dịch vụ AI tạm thời không khả dụng, bài viết giữ nguyên không đổi"},
+    },
+)
+def attach_ai_tags(
+    post_id: int,
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    current_user: User = Depends(get_current_user),
+    service: PostService = Depends(get_post_service),
+):
+    try:
+        post = service.get_post(post_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+    # Kiểm tra quyền tác giả bài viết
+    if post.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ tác giả mới có quyền gắn tag tự động bằng AI cho bài viết này",
+        )
+
+    req_id = request.headers.get("X-Request-ID")
+    try:
+        ai_result = ai_client.analyze_post(
+            title=post.title,
+            content=post.content,
+            token=token,
+            request_id=req_id,
+        )
+    except AiServiceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Dịch vụ AI tạm thời không khả dụng: {exc.message}",
+        )
+
+    suggested_tags = ai_result.get("data", {}).get("tags", [])
+    if suggested_tags:
+        service.attach_tags_to_post(post_id, suggested_tags)
+
+    return AiTagsOut(
+        post_id=post_id,
+        tags=suggested_tags,
+        analysis=ai_result.get("data", {}),
+    )
+
