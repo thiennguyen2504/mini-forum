@@ -96,3 +96,26 @@ def publish_comment_created(
         asyncio.run_coroutine_threadsafe(_async_publish(payload), loop)
     except Exception as exc:
         logger.warning("[Kafka] Error scheduling publish_comment_created: %s", exc)
+
+
+async def shutdown_producer() -> None:
+    """
+    Dừng AIOKafkaProducer một cách an toàn khi ứng dụng shutdown.
+    Sử dụng asyncio.run_coroutine_threadsafe trên _loop nền với timeout 3s.
+    Không raise exception nếu lỗi, chỉ log warning để tránh làm crash app khi tắt.
+    """
+    global _producer, _loop
+    if _producer is not None:
+        logger.info("[Kafka] Shutting down Kafka producer...")
+        try:
+            if _loop is not None and _loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(_producer.stop(), _loop)
+                await asyncio.wait_for(asyncio.wrap_future(future), timeout=3.0)
+            logger.info("[Kafka] Producer shut down successfully.")
+        except Exception as exc:
+            logger.warning("[Kafka] Error shutting down producer: %s", exc)
+        finally:
+            _producer = None
+
+
+
